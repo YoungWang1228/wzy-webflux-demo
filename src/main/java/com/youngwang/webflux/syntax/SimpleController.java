@@ -1,4 +1,4 @@
-package com.youngwang.webflux.controller;
+package com.youngwang.webflux.syntax;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -60,7 +60,7 @@ public class SimpleController {
         return Flux.just("hello ", name);
     }
 
-    @GetMapping("/flux/just/String/array")
+    @GetMapping("/flux/just/string/array")
     public Mono<List<String>> simpleFluxJustStringArray(@RequestParam("name") String name) {
         // 直接包装值
         // ！！！

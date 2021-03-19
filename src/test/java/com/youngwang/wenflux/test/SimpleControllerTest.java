@@ -1,7 +1,7 @@
 package com.youngwang.wenflux.test;
 
 import com.youngwang.webflux.WebfluxApplication;
-import com.youngwang.webflux.controller.SimpleController;
+import com.youngwang.webflux.syntax.SimpleController;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 @ExtendWith(SpringExtension.class)
+// 需要指定程序入口所在类
 @ContextConfiguration(classes = WebfluxApplication.class)
 @WebFluxTest(controllers = SimpleController.class)
 public class SimpleControllerTest {
@@ -69,11 +70,11 @@ public class SimpleControllerTest {
     @Test
     public void testSimpleFluxJustStringArray() {
         webClient.get()
-                .uri("/simple/flux/just/String/array?name={name}", Map.of("name", "张三"))
+                .uri("/simple/flux/just/string/array?name={name}", Map.of("name", "张三"))
                 .accept(MediaType.APPLICATION_JSON)
                 .exchange()
                 .expectBody(String.class)
-                .value(v -> System.out.println("testSimpleFluxJustStringArray: " + v));
+                .value(s -> System.out.println("testSimpleFluxJustStringArray: " + s));
     }
 
     @Test
