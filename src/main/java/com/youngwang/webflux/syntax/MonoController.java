@@ -110,6 +110,57 @@ public class MonoController {
         return m;
     }
 
+    // usingWhen
+    // error
+    // create
+    // deferContextual
+    // delay
+    // empty
+    // firstWithSignal
+    // firstWithValue
+    // ignoreElements
+    // never
+    // whenDelayError
+    // zipDelayError
+
+    // transform
+    // cache
+    // checkpoint
+    // contextWrite
+    // delayElement
+    // delaySubscription
+    // dematerialize
+    // delayUntil
+    // do....
+    // filterWhen
+    // cancelOn
+    // cast
+    // handle
+    // hide
+    // log
+    // metrics
+    // name
+    // ofType
+    // or
+    // on...
+    // publish
+    // repeat
+    // retry
+    // share
+    // single
+    // subscribe
+    // tag
+    // take
+    // timeout
+    // as
+    // block
+    // concatWith
+    // elapsed
+    // expand
+    // mergeWith
+    // timed
+    // toFuture
+
 
     private void sleep(long time) {
         try {
