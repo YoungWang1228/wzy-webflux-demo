@@ -101,14 +101,15 @@ public class ZipController {
         // 两个流会并发执行
 
         Mono<String> m1 = Mono.fromFuture(() -> CompletableFuture.supplyAsync(() -> {
-            System.out.println("fromFuture1 : hello " + name);
+            sleep(1500);
+            System.out.println(Thread.currentThread().getName() + " fromFuture1 : hello " + name);
             return "fromFuture1 " + name;
         }));
 
         Mono<String> m2 = Mono.defer(() -> {
             return Mono.fromFuture(() -> CompletableFuture.supplyAsync(() -> {
                 sleep(500);
-                System.out.println("fromFuture2 : hello " + name);
+                System.out.println(Thread.currentThread().getName() + " fromFuture2 : hello " + name);
                 return "fromFuture2 " + name;
             }));
         });

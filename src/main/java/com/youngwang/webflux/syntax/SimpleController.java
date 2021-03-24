@@ -9,12 +9,12 @@ import reactor.core.publisher.Mono;
 
 import java.text.MessageFormat;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Stream;
 
 @RestController
 @RequestMapping("/simple")
 public class SimpleController {
-
 
 
     // 注意，在webflux 中，接口只需要定义 Mono 或 Flux，无需订阅
@@ -84,5 +84,6 @@ public class SimpleController {
         // range 会从 start 累加指定的次数，形成的元素放入流中
         return Flux.range(0, size);
     }
+
 
 }
