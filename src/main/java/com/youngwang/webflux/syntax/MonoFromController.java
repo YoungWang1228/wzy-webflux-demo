@@ -82,21 +82,37 @@ public class MonoFromController {
 
     @GetMapping("future/concurrent")
     public Mono<String> fromFutureConcurrent(@RequestParam("name") String name) {
-        // 执行无返回值的并发任务，执行完成后，thenApply 返回结果
-        Mono<String> m = Mono.fromFuture(() -> CompletableFuture.allOf(
-                CompletableFuture.runAsync(() -> {
-                    sleep(500);
-                    System.out.println("Future 1");
-                }),
-                CompletableFuture.runAsync(() -> {
-                    sleep(1500);
-                    System.out.println("Future 2");
-                }),
-                CompletableFuture.runAsync(() -> {
-                    sleep(300);
-                    System.out.println("Future 3");
-                })
-        )).then(Mono.fromSupplier(()->{
+        // 执行无返回值的并发任务，执行完成后，then 返回结果
+        // 对于并发执行，一般来说，不要在 Mono 的处理步骤里使用阻塞操作
+        // 会导致线程挂起，吞吐量下降，因为一般配置的线程池大小会是CPU 的核数
+        //
+        // 所以 CompletableFuture.allOf 之后，不要执行 then、join 等操作
+        // 直接 返回，交由 Mono 去处理，执行 then，
+        // 这样就不会阻塞，是回调操作
+        //
+        Mono<String> m = Mono.fromFuture(
+                () -> CompletableFuture.allOf(
+                        CompletableFuture.runAsync(() -> {
+                            sleep(500);
+                            System.out.println("Future 1");
+                        }),
+                        CompletableFuture.runAsync(() -> {
+                            sleep(1500);
+                            System.out.println("Future 2");
+                        }),
+                        CompletableFuture.runAsync(() -> {
+                            sleep(300);
+                            System.out.println("Future 3");
+                        })
+                )
+
+                // thenApply 方法将造成阻塞，不能这么使用
+                // Mono 的方法需要无阻塞快速返回 ，需要阻塞的，交由主线程去callback
+//                .thenApply(v -> {
+//                    System.out.println("thenApply : hello " + name);
+//                    return "hello " + name;
+//                })
+        ).then(Mono.fromSupplier(() -> {
             System.out.println("thenApply : hello " + name);
             return "hello " + name;
         }));
@@ -105,8 +121,12 @@ public class MonoFromController {
         return m;
     }
 
+
     @GetMapping("future/concurrent/result")
     public Mono<String> fromFutureConcurrentResult(@RequestParam("name") String name) {
+        // Mono.zip 用于合并多个流，合并后的得到 Tuple 元素
+        // Tuple 可以获得每个流的结果
+
         Mono<String> m = Mono.zip(
                 Mono.fromFuture(() -> CompletableFuture.supplyAsync(() -> {
                     sleep(500);
