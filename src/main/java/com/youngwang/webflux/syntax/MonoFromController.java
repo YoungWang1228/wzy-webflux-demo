@@ -10,6 +10,9 @@ import reactor.core.publisher.Mono;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Stream;
 
+/**
+ * Mono from 的用法示例
+ */
 @RestController
 @RequestMapping("/mono/from")
 public class MonoFromController {

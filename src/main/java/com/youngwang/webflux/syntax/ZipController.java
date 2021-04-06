@@ -12,6 +12,9 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
+/**
+ * zip 的用法示例
+ */
 @RestController
 @RequestMapping("/zip")
 public class ZipController {

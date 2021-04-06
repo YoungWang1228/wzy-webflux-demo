@@ -12,6 +12,9 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Stream;
 
+/**
+ * Reactive 风格的基础示例
+ */
 @RestController
 @RequestMapping("/simple")
 public class SimpleController {

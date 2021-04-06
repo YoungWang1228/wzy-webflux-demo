@@ -10,6 +10,9 @@ import reactor.core.publisher.Mono;
 import java.time.Duration;
 import java.util.stream.Stream;
 
+/**
+ * then 的用法示例
+ */
 @RestController
 @RequestMapping("/then")
 public class ThenController {
