@@ -293,12 +293,73 @@ public class MonoController {
         });
     }
 
-    // transform
-    // cache
+    @GetMapping("/transform")
+    public Mono<String> transform(@RequestParam("name") String name) {
+        // mono#transform 将链式操作方到 function 里面去做。可用于抽象公共代码
+        // 和 transformDeferred 对比，注意打印的顺序。
+
+        Mono<String> m = Mono.just(name).transform(m1 -> {
+            System.out.println("1 你好 " + name);
+            return m1.filter("张三"::equals)
+                    .map(s -> "hello " + s)
+                    .map(String::toUpperCase);
+        });
+
+        System.out.println("你好 " + name);
+        return m;
+    }
+
+    @GetMapping("/transform-deferred")
+    public Mono<String> transformDeferred(@RequestParam("name") String name) {
+        // mono#transformDeferred 将链式操作方到 function 里面去做，有延迟执行的效果。可用于抽象公共代码
+        // 和 transform 对比，注意打印的顺序。
+
+        Mono<String> m = Mono.just(name).transformDeferred(m1 -> {
+            System.out.println("1 你好 " + name);
+            return m1.filter("张三"::equals)
+                    .map(s -> "hello " + s)
+                    .map(String::toUpperCase);
+        });
+
+        System.out.println("你好 " + name);
+        return m;
+    }
+
+    @GetMapping("/cache")
+    public Mono<String> cache(@RequestParam("name") String name) {
+        // mono#cache 缓存最终结果
+        Mono<String> m = Mono.just(name)
+                .filter(s -> {
+                    System.out.println("1 你好 " + s);
+                    return "张三".equals(s);
+                })
+                .map(s -> {
+                    System.out.println("2 你好 " + s);
+                    return "hello " + s;
+                })
+                .delayElement(Duration.ofSeconds(3))
+                .map(s -> {
+                    System.out.println("3 你好 " + s);
+                    return s.toUpperCase();
+                })
+                .cache();
+
+        m.subscribe(s->{
+            System.out.println(s);
+        });
+
+        // 同个流，第二次订阅，直接返回结果，不再执行过程步骤
+        m.subscribe(s->{
+            System.out.println(s);
+        });
+
+        return Mono.just(name);
+    }
+
+
     // checkpoint
     // delaySubscription
     // dematerialize
-    // delayUntil
     // do....
     // cancelOn
     // handle
