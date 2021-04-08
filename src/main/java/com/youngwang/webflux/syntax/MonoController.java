@@ -7,14 +7,18 @@ import org.springframework.web.bind.annotation.RestController;
 import reactor.core.Exceptions;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
+import reactor.util.retry.Retry;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 /**
@@ -204,7 +208,7 @@ public class MonoController {
 
     @GetMapping("/of-type")
     public Mono<String> ofType(@RequestParam(name = "name", required = false) String name) {
-        // mono#ofType 用户过滤，只保留目标类型，并将流做强制类型转换。相当于 filter + cast
+        // mono#ofType 用于过滤，只保留目标类型，并将流做强制类型转换。相当于 filter + cast
         Object obj = "hello " + name;
         Mono<String> m = Mono.just(obj).ofType(String.class);
         System.out.println("你好 " + name);
@@ -344,42 +348,481 @@ public class MonoController {
                 })
                 .cache();
 
-        m.subscribe(s->{
+        m.subscribe(s -> {
             System.out.println(s);
         });
 
         // 同个流，第二次订阅，直接返回结果，不再执行过程步骤
-        m.subscribe(s->{
+        m.subscribe(s -> {
             System.out.println(s);
         });
 
         return Mono.just(name);
     }
 
+    @GetMapping("/handle")
+    public Mono<String> handle(@RequestParam("name") String name) {
+        // mono#handle，用 sink 来转换元素，重新发射信号。类似 Flux.generate
+        Mono<String> m = Mono.just(name)
+                .handle((s, sink) -> {
+                    if ("张三".equals(s)) {
+                        sink.next("hello " + s);
+                    }
+                });
+        System.out.println("你好 " + name);
+        return m;
+    }
 
-    // checkpoint
-    // delaySubscription
-    // dematerialize
-    // do....
-    // cancelOn
-    // handle
-    // hide
-    // metrics
-    // name
-    // tag
-    // on...
-    // publish
-    // repeat
-    // retry
-    // share
-    // subscribe
-    // take
-    // as
-    // block
-    // elapsed
-    // expand
-    // timed
-    // toFuture
+    @GetMapping("/to-future")
+    public Mono<String> toFuture(@RequestParam("name") String name) {
+        // mono#toFuture，字面意思
+        CompletableFuture<String> f = Mono.defer(() -> {
+            System.out.println("1 你好 " + name);
+            return Mono.just("hello " + name).delayElement(Duration.ofSeconds(5));
+        }).toFuture();
+        System.out.println("你好 " + name);
+
+        return Mono.fromFuture(() -> f);
+    }
+
+    @GetMapping("/retry")
+    public Mono<String> retry(@RequestParam("name") String name) {
+        // mono#retry，发生错误后，重试指定次数
+        Mono<String> m = Mono.just(name)
+                .map(s -> {
+                    System.out.println("1 你好 " + s);
+                    return s.toUpperCase();
+                })
+                .map(s -> {
+                    System.out.println("2 你好 " + s);
+                    if ("张三".equals(s)) {
+                        return "hello " + s;
+                    } else {
+                        throw new RuntimeException("我只要张三");
+                    }
+                })
+                .retry(1);
+        System.out.println("你好 " + name);
+
+        return m;
+    }
+
+    @GetMapping("/retry-when")
+    public Mono<String> retryWhen(@RequestParam("name") String name) {
+        // mono#retryWhen，自定义重试策略
+        // 重试策略是一个 Flux，给入的是 Flux<RetrySignal> ，将元素转换成正常的元素，就会进行重试
+        // 每重试一次，消费一个元素，流结束则重试结束，或者重试执行成功，没有发生异常则重试结束
+        // 重试结束最好将异常抛出或记录日志，否则将返回空流，吞掉异常
+
+        Retry customStrategy = Retry.from(companion -> companion.zipWith(
+                Flux.range(1, 4).delayElements(Duration.ofSeconds(2)),
+                (error, index) -> {
+                    if (index < 4) return index;
+                    else throw Exceptions.propagate(error.failure());
+                })
+        );
+
+        AtomicInteger i = new AtomicInteger(2);
+        Mono<String> m = Mono.just(name)
+                .map(s -> {
+                    System.out.println("1 你好 " + s);
+                    return s.toUpperCase();
+                })
+                .map(s -> {
+                    System.out.println("2 你好 " + s);
+                    if (i.get() != 0) {
+                        i.getAndDecrement();
+                        throw new RuntimeException("我只要张三");
+                    }
+                    return s;
+                })
+                .retryWhen(customStrategy);
+        System.out.println("你好 " + name);
+
+        return m;
+    }
+
+    @GetMapping("/repeat")
+    public Mono<List<String>> repeat(@RequestParam("name") String name) {
+        // mono#repeat，指定重试次数，得到 Flux 流
+        Mono<List<String>> m = Mono.just(name)
+                .repeat(3)
+                .collectList();
+        System.out.println("你好 " + name);
+        return m;
+    }
+
+    @GetMapping("/expand")
+    public Mono<List<String>> expand(@RequestParam("name") String name) {
+        // mono#expand，用于树的展开，广度优先，得到 Flux 流
+        Mono<List<String>> m = Mono.just(buildTree())
+                .expand(n -> {
+                    return Flux.fromIterable(n.children);
+                })
+                .map(n -> n.id)
+                .collectList();
+        System.out.println("你好 " + name);
+        return m;
+    }
+
+    @GetMapping("/expand-deep")
+    public Mono<List<String>> expandDeep(@RequestParam("name") String name) {
+        // mono#expandDeep，用于树的展开，深度优先，得到 Flux 流
+        Mono<List<String>> m = Mono.just(buildTree())
+                .expandDeep(n -> {
+                    return Flux.fromIterable(n.children);
+                })
+                .map(n -> n.id)
+                .collectList();
+        System.out.println("你好 " + name);
+        return m;
+    }
+
+    @GetMapping("/elapsed")
+    public Mono<String> elapsed(@RequestParam("name") String name) {
+        // mono#elapsed，将元素和流开始到当前步骤的耗时 合并为一个 Tuple2 对象
+        Mono<String> m = Mono.defer(() -> {
+            return Mono.just("hello " + name).delayElement(Duration.ofSeconds(5));
+        })
+                .elapsed()
+                .map(t -> {
+                    return t.getT2() + "， 用时 " + t.getT1() + " ms";
+                });
+        System.out.println("你好 " + name);
+        return m;
+    }
+
+    @GetMapping("/share")
+    public Mono<String> share(@RequestParam("name") String name) {
+        // mono#share 缓存最终结果。share()方法(针对Flux)，cache()方法(针对Mono)
+        Mono<String> m = Mono.just(name)
+                .filter(s -> {
+                    System.out.println("1 你好 " + s);
+                    return "张三".equals(s);
+                })
+                .map(s -> {
+                    System.out.println("2 你好 " + s);
+                    return "hello " + s;
+                })
+                .delayElement(Duration.ofSeconds(3))
+                .map(s -> {
+                    System.out.println("3 你好 " + s);
+                    return s.toUpperCase();
+                })
+                .share();
+
+        m.subscribe(s -> {
+            System.out.println(s);
+        });
+
+        // 同个流，第二次订阅，直接返回结果，不再执行过程步骤
+        m.subscribe(s -> {
+            System.out.println(s);
+        });
+
+        return m;
+    }
+
+    @GetMapping("/take")
+    public Mono<String> take(@RequestParam("name") String name) {
+        // mono#take，只获取指定时间内产生的元素，超时的元素将被丢弃
+        Mono<String> m = Mono.defer(() -> {
+            return Mono.just("hello " + name).delayElement(Duration.ofSeconds(3));
+        })
+                .take(Duration.ofSeconds(1));
+        System.out.println("你好 " + name);
+        return m;
+    }
+
+    @GetMapping("/take-until-other")
+    public Mono<String> takeUntilOther(@RequestParam("name") String name) {
+        // mono#takeUntilOther，只获取指定时间内产生的元素，超时的元素将被丢弃
+        // 这个指定的时间，就是 m2 发出完成信号的时间
+
+        Mono<String> m1 = Mono.defer(() -> {
+            return Mono.just("1 hello " + name).delayElement(Duration.ofSeconds(2));
+        });
+
+        Mono<String> m2 = Mono.defer(() -> {
+            return Mono.just("2 hello " + name).delayElement(Duration.ofSeconds(3));
+        });
+
+        Mono<String> m = m1.takeUntilOther(m2);
+        System.out.println("你好 " + name);
+        return m;
+    }
+
+    @GetMapping("/delay-subscription")
+    public Mono<String> delaySubscription(@RequestParam("name") String name) {
+        // mono#delaySubscription，延时订阅
+
+        Mono<String> m = Mono.just(name)
+                .filter(s -> {
+                    System.out.println("1 你好 " + s);
+                    return "张三".equals(s);
+                })
+                .map(s -> {
+                    System.out.println("2 你好 " + s);
+                    return "hello " + s;
+                })
+                .delayElement(Duration.ofSeconds(3))
+                .map(s -> {
+                    System.out.println("3 你好 " + s);
+                    return s.toUpperCase();
+                })
+                .delaySubscription(Duration.ofSeconds(2));
+
+        System.out.println("你好 " + name);
+        return m;
+    }
+
+    @GetMapping("/as")
+    public Mono<String> as(@RequestParam("name") String name) {
+        // mono#as，做类型转换，类似 flatMap
+        Mono<String> m = Mono.just("hello " + name)
+                .flatMapMany(s -> Flux.fromArray(s.split("")))
+                .as(f -> f.collect(Collectors.joining()));
+        System.out.println("你好 " + name);
+        return m;
+    }
+
+
+    @GetMapping("/metrics")
+    public Mono<String> metrics(@RequestParam("name") String name) {
+        // mono#metrics，监控指标，需要配合 Micrometer 使用，做应用的指标收集与监控
+        Mono<String> m = Mono.just("hello " + name).metrics().name("test").tag("key", "hello");
+        System.out.println("你好 " + name);
+        return m;
+    }
+
+    @GetMapping("/subscribe")
+    public Mono<String> subscribe(@RequestParam("name") String name) {
+        // mono#subscribe，订阅
+        // 一般情况下，在 webflux 环境中，不需要手动执行订阅操作
+        // 方法返回后，框架会帮我们执行订阅操作
+
+        Mono<String> m = Mono.just(name)
+                .filter(s -> {
+                    System.out.println("1 你好 " + s);
+                    return "张三".equals(s);
+                })
+                .map(s -> {
+                    System.out.println("2 你好 " + s);
+                    return "hello " + s;
+                })
+                .delayElement(Duration.ofSeconds(3))
+                .map(s -> {
+                    System.out.println("3 你好 " + s);
+                    return s.toUpperCase();
+                });
+
+        m.subscribe(s -> {
+            System.out.println(s);
+        });
+
+        System.out.println("你好 " + name);
+        return m;
+    }
+
+    @GetMapping("/subscribe-on")
+    public Mono<String> subscribeOn(@RequestParam("name") String name) {
+        // mono#subscribeOn，不会订阅流，只是指定调度器
+        // subscribeOn 和 publishOn 的区别：
+        //   subscribeOn 会影响上游操作，不管出现的位置在哪里，都会影响到整个流的调度器
+        //   publishOn 用于切换后续步骤的调度器，不会影响上游操作，所以出现的位置决定了影响范围
+
+        Mono<String> m = Mono.just(name)
+                .filter(s -> {
+                    System.out.println("1 你好 " + s);
+                    return "张三".equals(s);
+                })
+                .map(s -> {
+                    System.out.println("2 你好 " + s);
+                    return "hello " + s;
+                })
+                .delayElement(Duration.ofSeconds(3))
+                .map(s -> {
+                    System.out.println("3 你好 " + s);
+                    return s.toUpperCase();
+                })
+                .subscribeOn(Schedulers.boundedElastic());
+
+        m.subscribe(s -> {
+            System.out.println(s);
+        });
+
+        System.out.println("你好 " + name);
+        return m;
+    }
+
+
+    @GetMapping("/publish-on")
+    public Mono<String> publishOn(@RequestParam("name") String name) {
+        // mono#publishOn，切换调度器
+        // subscribeOn 和 publishOn 的区别：
+        //   subscribeOn 会影响上游操作，不管出现的位置在哪里，都会影响到整个流的调度器
+        //   publishOn 用于切换后续步骤的调度器，不会影响上游操作，所以出现的位置决定了影响范围
+
+        Mono<String> m = Mono.just(name)
+                .filter(s -> {
+                    System.out.println("1 你好 " + s);
+                    return "张三".equals(s);
+                })
+                .publishOn(Schedulers.boundedElastic())
+                .map(s -> {
+                    System.out.println("2 你好 " + s);
+                    return "hello " + s;
+                })
+                .delayElement(Duration.ofSeconds(3))
+                .map(s -> {
+                    System.out.println("3 你好 " + s);
+                    return s.toUpperCase();
+                });
+
+        System.out.println("你好 " + name);
+        return m;
+    }
+
+    @GetMapping("/do-on")
+    public Mono<String> doOn(@RequestParam("name") String name) {
+        // mono#doOn，doOn 操作用于窥视流，在不改变流的情况下，可以得到通知（只读）
+
+        Mono<String> m = Mono.just(name)
+                .map(s -> {
+                    System.out.println("1 你好 " + s);
+                    return "hello " + s;
+                })
+
+                // 每产生一个元素，就触发一次
+                .doOnNext(s -> System.out.println("doOnNext " + s))
+
+                .delayElement(Duration.ofSeconds(3))
+
+                // 每一步操作就触发一次，包括完成操作
+                .doOnEach(s -> System.out.println("doOnEach " + s.get() + ", " + s.toString()))
+                .map(s -> {
+                    System.out.println("2 你好 " + s);
+                    return s.toUpperCase();
+                })
+
+                // 订阅时触发
+                .doOnSubscribe(s -> System.out.println("doOnSubscribe"))
+
+                // 成功完成时触发
+                .doOnSuccess(s -> System.out.println("doOnSuccess " + s))
+
+                // 结束时触发
+                .doOnTerminate(() -> System.out.println("doOnTerminate"));
+        System.out.println("你好 " + name);
+        return m;
+    }
+
+    @GetMapping("/do-something")
+    public Mono<String> doSomething(@RequestParam("name") String name) {
+        // mono#doSomething，一次性事件触发
+
+        Mono<String> m = Mono.just(name)
+                .map(s -> {
+                    System.out.println("1 你好 " + s);
+                    return "hello " + s;
+                })
+
+                .delayElement(Duration.ofSeconds(3))
+
+                // doFirst，订阅时触发。多个 doFirst 的执行顺序和声明顺序是反转的
+                .doFirst(() -> System.out.println("doFirst three"))
+                .doFirst(() -> System.out.println("doFirst two"))
+                .doFirst(() -> System.out.println("doFirst one"))
+
+                .map(s -> {
+                    System.out.println("2 你好 " + s);
+                    return s.toUpperCase();
+                })
+
+                // doAfterTerminate， 流结束后触发
+                .doAfterTerminate(() -> System.out.println("doAfterTerminate"))
+
+                // doFinally， 流结束后触发，这里可以拿到流是正常结束，还是异常或者取消，然后作出不同的逻辑
+                .doFinally(st -> System.out.println("doFinally " + st.name()));
+
+        System.out.println("你好 " + name);
+        return m;
+    }
+
+
+    @GetMapping("/on-error-map")
+    public Mono<String> onErrorMap(@RequestParam("name") String name) {
+        // mono#on，on操作用于处理异常
+
+        Mono<String> m = Mono.just(name)
+                .map(s -> {
+                    if ("张三".equals(s)) {
+                        return "hello " + s;
+                    } else {
+                        throw new RuntimeException("我只要张三");
+                    }
+                })
+
+                // onErrorMap 用于异常转换
+                .onErrorMap(e -> new IllegalArgumentException(e.getMessage(), e))
+
+                // 发生错误后，处理后返回新的值。类似 catch 操作
+                .onErrorResume(e -> {
+                    e.printStackTrace();
+                    return Mono.just("fallback");
+                })
+                ;
+
+        System.out.println("你好 " + name);
+        return m;
+    }
+
+
+    @GetMapping("/on-error-continue")
+    public Mono<String> onErrorContinue(@RequestParam("name") String name) {
+        // mono#on，on操作用于处理异常
+
+        Mono<String> m = Mono.just(name)
+                .map(s -> {
+                    if ("张三".equals(s)) {
+                        return "hello " + s;
+                    } else {
+                        throw new RuntimeException("我只要张三");
+                    }
+                })
+
+                // 将发生错误的元素移除，以便恢复流。 传入的参数为 (异常，发生错误的元素)
+                // 在mono中，移除了元素，就变空流了
+                .onErrorContinue((e, o) -> {
+                    e.printStackTrace();
+                    System.out.println("onErrorContinue " + o);
+                })
+                ;
+
+        System.out.println("你好 " + name);
+        return m;
+    }
+
+    @GetMapping("/on-error-return")
+    public Mono<String> onErrorReturn(@RequestParam("name") String name) {
+        // mono#on，on操作用于处理异常
+
+        Mono<String> m = Mono.just(name)
+                .map(s -> {
+                    if ("张三".equals(s)) {
+                        return "hello " + s;
+                    } else {
+                        throw new RuntimeException("我只要张三");
+                    }
+                })
+
+                // 发生错误后，返回默认值
+                .onErrorReturn("fallback")
+                ;
+
+        System.out.println("你好 " + name);
+        return m;
+    }
 
 
     private void sleep(long time) {
@@ -387,6 +830,54 @@ public class MonoController {
             Thread.sleep(time);
         } catch (InterruptedException e) {
             e.printStackTrace();
+        }
+    }
+
+    /**
+     * 构建树结构
+     *
+     * @return 根节点
+     */
+    public Node buildTree() {
+        Node root = new Node("1");
+
+        Node n11 = new Node("1-1");
+        n11.addChild(new Node("1-1-1"))
+                .addChild(new Node("1-1-2"))
+                .addChild(new Node("1-1-3"))
+                .addChild(new Node("1-1-4"));
+
+        Node n12 = new Node("1-2");
+        n12.addChild(new Node("1-2-1"))
+                .addChild(new Node("1-2-2"))
+                .addChild(new Node("1-2-3"))
+                .addChild(new Node("1-2-4"));
+
+
+        Node n13 = new Node("1-3");
+        n13.addChild(new Node("1-3-1"))
+                .addChild(new Node("1-3-2"))
+                .addChild(new Node("1-3-3"))
+                .addChild(new Node("1-3-4"));
+
+        root.addChild(n11).addChild(n12).addChild(n13);
+        return root;
+    }
+
+    /**
+     * 树节点
+     */
+    public static class Node {
+        String id;
+        List<Node> children = new ArrayList<>();
+
+        public Node(String id) {
+            this.id = id;
+        }
+
+        public Node addChild(Node n) {
+            children.add(n);
+            return this;
         }
     }
 }
